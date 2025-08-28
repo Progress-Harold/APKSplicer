@@ -25,6 +25,7 @@ final class VMManager {
     private var virtualMachine: VZVirtualMachine?
     #endif
     private var vmConfiguration: VMConfiguration?
+    private var displayView: AuroraMetalView?
     private let logger = Logger(subsystem: "com.aurora.apksplicer", category: "VMManager")
     
     private(set) var isRunning = false
@@ -38,6 +39,12 @@ final class VMManager {
     }
     
     // MARK: - Public Interface
+    
+    /// Set the Metal display view for VM output
+    func setDisplayView(_ view: AuroraMetalView) {
+        self.displayView = view
+        logger.info("Display view configured for VM output")
+    }
     
     /// Create and start a VM for the specified title
     func startVM(for title: InstalledTitle, profile: PerformanceProfile) async -> AuroraResult<Void> {
@@ -143,7 +150,7 @@ final class VMManager {
     
     /// Reset the VM to a clean state
     func resetVM() async -> AuroraResult<Void> {
-        guard let title = currentTitle else {
+        guard currentTitle != nil else {
             return .failure(.vmNotRunning)
         }
         
@@ -196,9 +203,19 @@ final class VMManager {
         let platform = VZGenericPlatformConfiguration()
         config.platform = platform
         
-        // Boot loader configuration (placeholder - will need Android kernel)
-        // For now, we'll use a basic Linux boot loader structure
-        let bootLoader = VZLinuxBootLoader(kernelURL: getPlaceholderKernelURL())
+        // Boot loader configuration with Android kernel
+        let kernelURL = getAndroidKernelURL()
+        let bootLoader = VZLinuxBootLoader(kernelURL: kernelURL)
+        
+        // Set Android-specific boot arguments
+        bootLoader.commandLine = "androidboot.hardware=android_x86_64 androidboot.console=ttyS0 quiet"
+        
+        // Check for initrd
+        let initrdURL = kernelURL.deletingLastPathComponent().appendingPathComponent("android-initrd.img")
+        if FileManager.default.fileExists(atPath: initrdURL.path) {
+            bootLoader.initialRamdiskURL = initrdURL
+        }
+        
         config.bootLoader = bootLoader
         
         // Storage configuration
@@ -222,11 +239,34 @@ final class VMManager {
     }
     #endif
     
-    private func getPlaceholderKernelURL() -> URL {
-        // Placeholder - in real implementation, this would point to Android kernel
-        // For now, return a path where we expect to find the kernel
+    private func getAndroidKernelURL() -> URL {
+        // Check for kernel in project Images directory first (development)
+        let projectRoot = getProjectRoot()
+        let projectKernel = projectRoot.appendingPathComponent("Images/kernels/android-kernel")
+        
+        if FileManager.default.fileExists(atPath: projectKernel.path) {
+            return projectKernel
+        }
+        
+        // Fallback to app support directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("Aurora/kernels/android-kernel")
+    }
+    
+    private func getProjectRoot() -> URL {
+        // Find project root by looking for APKSplicer.xcodeproj
+        var current = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        
+        while current.path != "/" {
+            let xcodeproj = current.appendingPathComponent("APKSplicer.xcodeproj")
+            if FileManager.default.fileExists(atPath: xcodeproj.path) {
+                return current
+            }
+            current = current.deletingLastPathComponent()
+        }
+        
+        // Fallback to current directory
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
     
     private func setupStorageDevices(config: VZVirtualMachineConfiguration, diskImagePath: URL, profile: PerformanceProfile) async throws {

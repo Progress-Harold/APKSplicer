@@ -331,35 +331,7 @@ struct TitleHeader: View {
     }
 }
 
-struct VMDisplayView: View {
-    @Bindable var vmManager: VMManager
-    
-    var body: some View {
-        ZStack {
-            // VM display placeholder
-            Rectangle()
-                .fill(.black)
-                .overlay {
-                    if vmManager.isRunning {
-                        Text("Android VM Display\n(Metal rendering will go here)")
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        VStack(spacing: 16) {
-                            Image(systemName: "display")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.secondary)
-                            
-                            Text("VM Not Running")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+// VMDisplayView is now in its own file - VMDisplayView.swift
 
 struct JobProgressOverlay: View {
     let jobs: [InstallationJob]

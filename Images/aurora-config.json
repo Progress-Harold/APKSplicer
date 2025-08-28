@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "created": "2025-08-28T01:18:49Z",
+  "kernels": {
+    "android-x86-9": {
+      "kernel_path": "kernels/android-kernel",
+      "initrd_path": "kernels/android-initrd.img",
+      "boot_args": "androidboot.hardware=android_x86_64 androidboot.console=ttyS0 quiet",
+      "architecture": "x86_64",
+      "recommended_memory_mb": 4096,
+      "recommended_cpu_count": 4
+    }
+  },
+  "disk_templates": {
+    "android-base": {
+      "path": "disks/android-base.img",
+      "size_gb": 8,
+      "format": "raw",
+      "description": "Base Android disk image"
+    }
+  },
+  "notes": [
+    "This configuration supports Android-x86 for initial testing",
+    "For production, consider using Android GSI arm64 builds",
+    "Kernel paths are relative to the Images directory"
+  ]
+}

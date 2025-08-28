@@ -22,7 +22,7 @@ struct DisplayConfiguration: Codable, Hashable {
 
 /// Performance profile for VM resource allocation
 struct PerformanceProfile: Codable, Hashable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let cpuCount: Int
     let memoryMB: Int
@@ -32,6 +32,7 @@ struct PerformanceProfile: Codable, Hashable, Identifiable {
     let abiPreference: String
     
     static let low = PerformanceProfile(
+        id: UUID(),
         name: "Low",
         cpuCount: 2,
         memoryMB: 3072,
@@ -42,6 +43,7 @@ struct PerformanceProfile: Codable, Hashable, Identifiable {
     )
     
     static let medium = PerformanceProfile(
+        id: UUID(),
         name: "Medium",
         cpuCount: 4,
         memoryMB: 6144,
@@ -52,6 +54,7 @@ struct PerformanceProfile: Codable, Hashable, Identifiable {
     )
     
     static let high = PerformanceProfile(
+        id: UUID(),
         name: "High",
         cpuCount: 8,
         memoryMB: 12288,

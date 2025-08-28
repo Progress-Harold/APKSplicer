@@ -18,6 +18,7 @@ struct AuroraMainView: View {
     @State private var showingSettings = false
     @State private var selectedTitle: InstalledTitle?
     @State private var vmManager = VMManager.shared
+    @State private var adbBridge = ADBBridge.shared
     
     var body: some View {
         NavigationSplitView {
@@ -31,7 +32,11 @@ struct AuroraMainView: View {
         } detail: {
             // Main content area
             if let title = selectedTitle {
-                TitleDetailView(title: title, vmManager: vmManager)
+                TitleDetailView(title: title, vmManager: vmManager, onUninstall: { uninstallTitle in
+                    Task {
+                        await performUninstall(uninstallTitle)
+                    }
+                })
             } else {
                 EmptyLibraryView {
                     showingInstaller = true
@@ -54,6 +59,12 @@ struct AuroraMainView: View {
             if !jobManager.activeJobs.isEmpty {
                 JobProgressOverlay(jobs: jobManager.activeJobs)
                     .padding()
+            }
+        }
+        .onAppear {
+            // Check for existing ADB connections when the app starts
+            Task {
+                _ = await adbBridge.checkExistingConnections()
             }
         }
     }
@@ -113,6 +124,30 @@ struct AuroraMainView: View {
         case .failure:
             // Job already marked as failed by installer
             break
+        }
+    }
+    
+    @MainActor
+    private func performUninstall(_ title: InstalledTitle) async {
+        // Show confirmation dialog would go here in a real implementation
+        // For now, we'll proceed with uninstallation
+        
+        // Check if VM is running and ADB is connected
+        if adbBridge.isConnected {
+            // Try ADB uninstall
+            switch await adbBridge.uninstallAPK(packageId: title.packageId) {
+            case .success:
+                // Remove from SwiftData
+                dataContext.delete(title)
+                print("Successfully uninstalled: \(title.packageId)")
+            case .failure(let error):
+                print("Uninstallation failed: \(error.localizedDescription)")
+            }
+        } else {
+            // ADB not connected - offer to remove from Aurora library only
+            print("ADB not connected - removing from Aurora library only")
+            dataContext.delete(title)
+            print("Removed \(title.displayName) from Aurora library (APK may still be on device)")
         }
     }
 }
@@ -278,11 +313,12 @@ struct EmptyLibraryView: View {
 struct TitleDetailView: View {
     let title: InstalledTitle
     @Bindable var vmManager: VMManager
+    let onUninstall: (InstalledTitle) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
             // Title header
-            TitleHeader(title: title, vmManager: vmManager)
+            TitleHeader(title: title, vmManager: vmManager, onUninstall: onUninstall)
                 .padding()
                 .background(.regularMaterial)
             
@@ -296,6 +332,7 @@ struct TitleHeader: View {
     let title: InstalledTitle
     @Bindable var vmManager: VMManager
     @State private var adbBridge = ADBBridge.shared
+    let onUninstall: (InstalledTitle) -> Void
     
     var body: some View {
         HStack {
@@ -365,9 +402,7 @@ struct TitleHeader: View {
                     
                     // Uninstall button
                     Button("Uninstall") {
-                        Task {
-                            await performUninstall(title)
-                        }
+                        onUninstall(title)
                     }
                     .buttonStyle(.bordered)
                     .foregroundStyle(.red)
@@ -376,41 +411,6 @@ struct TitleHeader: View {
         }
     }
     
-    private func performUninstall(_ title: InstalledTitle) async {
-        // Show confirmation dialog would go here in a real implementation
-        // For now, we'll proceed with uninstallation
-        
-        // Check if VM is running and ADB is connected
-        guard adbBridge.isConnected else {
-            print("ADB not connected - cannot uninstall")
-            return
-        }
-        
-        switch await adbBridge.uninstallAPK(packageId: title.packageId) {
-        case .success:
-            // Remove from SwiftData on the main actor
-            await MainActor.run {
-                dataContext.delete(title)
-            }
-            print("Successfully uninstalled: \(title.packageId)")
-        case .failure(let error):
-            print("Uninstallation failed: \(error.localizedDescription)")
-        }
-    }
-    
-    private func clearAppData(for title: InstalledTitle) async {
-        guard adbBridge.isConnected else {
-            print("ADB not connected - cannot clear data")
-            return
-        }
-        
-        switch await adbBridge.clearPackageData(packageId: title.packageId) {
-        case .success:
-            print("Successfully cleared data for: \(title.packageId)")
-        case .failure(let error):
-            print("Failed to clear data: \(error.localizedDescription)")
-        }
-    }
 }
 
 struct AppContextMenu: View {
@@ -447,20 +447,23 @@ struct AppContextMenu: View {
         }
     }
     
+    @MainActor
     private func performContextUninstall(_ title: InstalledTitle) async {
-        guard adbBridge.isConnected else {
-            print("ADB not connected - cannot uninstall")
-            return
-        }
-        
-        switch await adbBridge.uninstallAPK(packageId: title.packageId) {
-        case .success:
-            await MainActor.run {
+        if adbBridge.isConnected {
+            // Try ADB uninstall
+            switch await adbBridge.uninstallAPK(packageId: title.packageId) {
+            case .success:
+                // Remove from SwiftData
                 dataContext.delete(title)
+                print("Successfully uninstalled: \(title.packageId)")
+            case .failure(let error):
+                print("Uninstallation failed: \(error.localizedDescription)")
             }
-            print("Successfully uninstalled: \(title.packageId)")
-        case .failure(let error):
-            print("Uninstallation failed: \(error.localizedDescription)")
+        } else {
+            // ADB not connected - offer to remove from Aurora library only
+            print("ADB not connected - removing from Aurora library only")
+            dataContext.delete(title)
+            print("Removed \(title.displayName) from Aurora library (APK may still be on device)")
         }
     }
     

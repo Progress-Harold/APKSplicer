@@ -28,6 +28,11 @@ final class ADBBridge {
     
     private init() {
         detectADBPath()
+        
+        // Check for existing connections on startup
+        Task {
+            _ = await checkExistingConnections()
+        }
     }
     
     // MARK: - Public Interface
@@ -46,10 +51,42 @@ final class ADBBridge {
         }
     }
     
+    /// Check for existing ADB connections and update connection status
+    func checkExistingConnections() async -> AuroraResult<Void> {
+        logger.info("Checking for existing ADB connections")
+        
+        do {
+            let output = try await executeADBCommand(["devices"])
+            let devices = parseDeviceList(output)
+            
+            // Find any connected device
+            if let connectedDevice = devices.first(where: { $0.status == .device }) {
+                self.isConnected = true
+                self.connectedDevice = connectedDevice.identifier
+                logger.info("Found existing ADB connection: \(connectedDevice.identifier)")
+                return .success(())
+            } else {
+                self.isConnected = false
+                self.connectedDevice = nil
+                logger.info("No connected ADB devices found")
+                return .failure(.adbConnectionFailed)
+            }
+        } catch {
+            logger.error("Failed to check ADB connections: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
     /// Connect to an Android device/VM on specified port
     func connect(to host: String = "localhost", port: Int = 5555) async -> AuroraResult<Void> {
         let target = "\(host):\(port)"
         logger.info("Connecting to Android device: \(target)")
+        
+        // First check if we already have a connection
+        if case .success = await checkExistingConnections() {
+            logger.info("Using existing ADB connection")
+            return .success(())
+        }
         
         do {
             // First disconnect any existing connections
@@ -386,10 +423,20 @@ final class ADBBridge {
         ]
         
         for path in possiblePaths {
-            if FileManager.default.fileExists(atPath: path) || path == "adb" {
+            if path == "adb" {
+                // For 'adb' without path, we'll test if it works
                 self.adbPath = path
-                logger.info("ADB path detected: \(path)")
+                logger.info("ADB path set to: \(path) (will test execution)")
                 return
+            } else if FileManager.default.fileExists(atPath: path) {
+                // Check if the file is executable
+                if FileManager.default.isExecutableFile(atPath: path) {
+                    self.adbPath = path
+                    logger.info("ADB path detected: \(path)")
+                    return
+                } else {
+                    logger.warning("ADB found at \(path) but not executable")
+                }
             }
         }
         
@@ -402,10 +449,17 @@ final class ADBBridge {
             let outputPipe = Pipe()
             let errorPipe = Pipe()
             
-            process.executableURL = URL(fileURLWithPath: adbPath)
-            process.arguments = arguments
+            // Use shell to execute ADB to avoid sandboxing issues
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            let adbCommand = "\(adbPath) " + arguments.map { "\"\($0)\"" }.joined(separator: " ")
+            process.arguments = ["-c", adbCommand]
             process.standardOutput = outputPipe
             process.standardError = errorPipe
+            
+            // Set environment to include PATH
+            var environment = ProcessInfo.processInfo.environment
+            environment["PATH"] = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
+            process.environment = environment
             
             process.terminationHandler = { _ in
                 let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
@@ -417,6 +471,7 @@ final class ADBBridge {
                 if process.terminationStatus == 0 {
                     continuation.resume(returning: output)
                 } else {
+                    self.logger.error("ADB command failed: \(error)")
                     let _ = error.isEmpty ? "ADB command failed with exit code \(process.terminationStatus)" : error
                     continuation.resume(throwing: AuroraError.adbConnectionFailed)
                 }
@@ -425,6 +480,7 @@ final class ADBBridge {
             do {
                 try process.run()
             } catch {
+                self.logger.error("Failed to execute ADB command via shell: \(error.localizedDescription)")
                 continuation.resume(throwing: AuroraError.adbNotFound)
             }
         }

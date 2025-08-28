@@ -234,17 +234,36 @@ final class XAPKInstaller {
         // Create destination directory
         try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
         
-        // Use system unzip command for now
-        // In production, you might want to use a Swift ZIP library
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-q", source.path, "-d", destination.path]
-        
-        try process.run()
-        process.waitUntilExit()
-        
-        guard process.terminationStatus == 0 else {
-            throw AuroraError.xapkParsingFailed(reason: "Failed to extract XAPK file")
+        // Use async process execution to avoid hanging
+        return try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+            process.arguments = ["-q", "-o", source.path, "-d", destination.path]
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+            
+            process.terminationHandler = { _ in
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorMessage = String(data: errorData, encoding: .utf8) ?? ""
+                
+                if process.terminationStatus == 0 {
+                    self.logger.info("ZIP extraction completed successfully")
+                    continuation.resume()
+                } else {
+                    self.logger.error("ZIP extraction failed with status \(process.terminationStatus): \(errorMessage)")
+                    continuation.resume(throwing: AuroraError.xapkParsingFailed(reason: "Failed to extract XAPK: \(errorMessage)"))
+                }
+            }
+            
+            do {
+                try process.run()
+            } catch {
+                self.logger.error("Failed to start unzip process: \(error.localizedDescription)")
+                continuation.resume(throwing: AuroraError.xapkParsingFailed(reason: "Failed to start unzip: \(error.localizedDescription)"))
+            }
         }
     }
     
@@ -352,6 +371,8 @@ final class XAPKInstaller {
     private func cleanupTemporaryDirectory(_ tempDir: URL) {
         try? fileManager.removeItem(at: tempDir)
     }
+    
+
     
     // MARK: - Uninstallation & Management
     

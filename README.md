@@ -9,7 +9,7 @@
 
 ## 🚀 Features
 
-### ✅ **Production-Ready** (50% Complete)
+### ✅ **Advanced Development** (50% Complete)
 
 - **🖥️ Native macOS Interface** - SwiftUI-based sidebar with library management and real-time progress
 - **🔧 Apple Virtualization Framework** - Professional VM management with conditional compilation support
@@ -243,6 +243,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Overall Progress: 50%** - Advanced beyond Phase B goals
 
+- **Current Phase**: Phase B — Install & Play
+- **Next Milestone**: Input mapping and real Android VM testing
+- **Target MVP**: 2025-03-15 (7 weeks from start)
+
 - ✅ **VM Architecture** - Production-ready Apple Virtualization Framework integration
 - ✅ **ADB Communication** - Complete host-guest communication bridge
 - ✅ **Installation Pipeline** - Full XAPK/APK parser and installer
@@ -253,4 +257,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Aurora** - Bringing Android to macOS with professional-grade virtualization technology.
+
+
+## 🎯 Recent Achievements
+
+- 1. [x] **AUR‑A‑001** App scaffold — ✅ 2025-01-27
+- 2. [x] **AUR‑B‑001** VM spec structs — ✅ 2025-01-27 (VMManager, PerformanceProfile, VMConfiguration)
+- 3. [x] **AUR‑B‑002** AVF boot (hello world frame) — ✅ 2025-01-27 (ready for real Android kernel)
+- 4. [x] **AUR‑B‑005** ADB port‑forward; reachability check — ✅ 2025-01-27 (full ADB bridge + agent)
+- 5. [x] **AUR‑A‑005** Drag‑drop handler → install flow stub — ✅ 2025-01-27 (file import + progress tracking)
+
+*Last updated: 2025-08-27 18:43*

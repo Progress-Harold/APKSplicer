@@ -71,6 +71,20 @@ APKSplicer/
 - Break large features into smaller, testable components
 - Use Epic → User Story → Technical Ticket hierarchy
 
+### README Sync Workflow ⚠️ CRITICAL
+**MANDATORY: After any progress update, sync README.md**
+
+1. **Update Progress**: Mark tasks complete in `aurora_progress.md`
+2. **Run Sync Script**: `./Scripts/sync-readme-progress.sh`
+3. **Commit Together**: Include both files in same commit
+4. **Verify Sync**: Check README shows correct progress %
+
+The sync script auto-updates:
+- Overall progress percentage and current phase
+- Recent achievements with completion dates
+- Production-ready status based on % complete
+- Feature completion badges and milestones
+
 ### Testing Strategy
 - **Unit Tests**: XAPK parser, profile serialization, input mapping
 - **Integration Tests**: Headless VM boot + ADB install smoke tests

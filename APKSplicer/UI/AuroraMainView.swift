@@ -10,7 +10,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct AuroraMainView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.modelContext) private var dataContext
     @Environment(JobManager.self) private var jobManager
     @Query private var installedTitles: [InstalledTitle]
     
@@ -107,7 +107,7 @@ struct AuroraMainView: View {
                 profileName: job.profile.name
             )
             
-            modelContext.insert(title)
+            dataContext.insert(title)
             job.complete()
             
         case .failure:
@@ -366,7 +366,7 @@ struct TitleHeader: View {
                     // Uninstall button
                     Button("Uninstall") {
                         Task {
-                            await uninstallTitle(title)
+                            await performUninstall(title)
                         }
                     }
                     .buttonStyle(.bordered)
@@ -376,7 +376,7 @@ struct TitleHeader: View {
         }
     }
     
-    private func uninstallTitle(_ title: InstalledTitle) async {
+    private func performUninstall(_ title: InstalledTitle) async {
         // Show confirmation dialog would go here in a real implementation
         // For now, we'll proceed with uninstallation
         
@@ -388,8 +388,10 @@ struct TitleHeader: View {
         
         switch await adbBridge.uninstallAPK(packageId: title.packageId) {
         case .success:
-            // Remove from SwiftData
-            modelContext.delete(title)
+            // Remove from SwiftData on the main actor
+            await MainActor.run {
+                dataContext.delete(title)
+            }
             print("Successfully uninstalled: \(title.packageId)")
         case .failure(let error):
             print("Uninstallation failed: \(error.localizedDescription)")
@@ -413,7 +415,7 @@ struct TitleHeader: View {
 
 struct AppContextMenu: View {
     let title: InstalledTitle
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.modelContext) private var dataContext
     @State private var vmManager = VMManager.shared
     @State private var adbBridge = ADBBridge.shared
     
@@ -440,12 +442,12 @@ struct AppContextMenu: View {
         
         Button("Uninstall App", role: .destructive) {
             Task {
-                await uninstallTitle(title)
+                await performContextUninstall(title)
             }
         }
     }
     
-    private func uninstallTitle(_ title: InstalledTitle) async {
+    private func performContextUninstall(_ title: InstalledTitle) async {
         guard adbBridge.isConnected else {
             print("ADB not connected - cannot uninstall")
             return
@@ -453,12 +455,16 @@ struct AppContextMenu: View {
         
         switch await adbBridge.uninstallAPK(packageId: title.packageId) {
         case .success:
-            modelContext.delete(title)
+            await MainActor.run {
+                dataContext.delete(title)
+            }
             print("Successfully uninstalled: \(title.packageId)")
         case .failure(let error):
             print("Uninstallation failed: \(error.localizedDescription)")
         }
     }
+    
+
     
     private func clearAppData(for title: InstalledTitle) async {
         guard adbBridge.isConnected else {

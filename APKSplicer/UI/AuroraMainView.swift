@@ -80,28 +80,40 @@ struct AuroraMainView: View {
             jobManager.removeJob(job)
         }
         
-        // Simulate installation process for now
-        let phases: [InstallationPhase] = [
-            .parsing, .extracting, .validating, .preparingVM, .installing, .configuringOBB
-        ]
-        
-        for (index, phase) in phases.enumerated() {
-            job.updateProgress(phase: phase, progress: Double(index) / Double(phases.count))
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+        // Check ADB availability first
+        switch await ADBBridge.shared.checkADBAvailability() {
+        case .failure(let error):
+            job.fail(with: error)
+            return
+        case .success:
+            break
         }
         
-        // Create mock installed title
-        let packageId = "com.example.app"
-        let title = InstalledTitle(
-            packageId: packageId,
-            displayName: job.sourceURL.deletingPathExtension().lastPathComponent,
-            version: "1.0",
-            diskImagePath: "~/Library/Application Support/Aurora/disks/\(packageId).img",
-            profileName: job.profile.name
-        )
+        // Ensure VM is running and ADB is connected
+        // For now, we'll simulate this since we don't have real VM yet
+        job.updateProgress(phase: .preparingVM, progress: 0.1)
         
-        modelContext.insert(title)
-        job.complete()
+        // Use real XAPK installer
+        let installer = XAPKInstaller.shared
+        
+        switch await installer.installPackage(from: job.sourceURL, job: job) {
+        case .success(let installedApp):
+            // Create SwiftData model
+            let title = InstalledTitle(
+                packageId: installedApp.packageId,
+                displayName: installedApp.displayName,
+                version: installedApp.version,
+                diskImagePath: "~/Library/Application Support/Aurora/disks/\(installedApp.packageId).img",
+                profileName: job.profile.name
+            )
+            
+            modelContext.insert(title)
+            job.complete()
+            
+        case .failure:
+            // Job already marked as failed by installer
+            break
+        }
     }
 }
 
@@ -280,6 +292,7 @@ struct TitleDetailView: View {
 struct TitleHeader: View {
     let title: InstalledTitle
     @Bindable var vmManager: VMManager
+    @State private var adbBridge = ADBBridge.shared
     
     var body: some View {
         HStack {
@@ -289,9 +302,21 @@ struct TitleHeader: View {
                     .font(.title2)
                     .fontWeight(.semibold)
                 
-                Text(title.packageId)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text(title.packageId)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    // ADB status indicator
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(adbBridge.isConnected ? .green : .red)
+                            .frame(width: 6, height: 6)
+                        Text(adbBridge.isConnected ? "ADB Connected" : "ADB Disconnected")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             
             Spacer()
@@ -308,6 +333,7 @@ struct TitleHeader: View {
                     Button("Stop") {
                         Task {
                             await vmManager.stopVM()
+                            await adbBridge.disconnect()
                         }
                     }
                     .buttonStyle(.bordered)
@@ -321,7 +347,15 @@ struct TitleHeader: View {
                 } else {
                     Button("Launch") {
                         Task {
-                            _ = await vmManager.startVM(for: title, profile: .medium)
+                            // Start VM and connect ADB
+                            switch await vmManager.startVM(for: title, profile: .medium) {
+                            case .success:
+                                // Give VM time to boot, then connect ADB
+                                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                                _ = await adbBridge.connect()
+                            case .failure:
+                                break
+                            }
                         }
                     }
                     .buttonStyle(.borderedProminent)

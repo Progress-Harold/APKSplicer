@@ -1,0 +1,404 @@
+//
+//  ADBBridge.swift
+//  APKSplicer
+//
+//  Created by Aurora Team on 2025-01-27.
+//
+
+import Foundation
+import Combine
+import os.log
+
+/// Manages ADB (Android Debug Bridge) communication with Android VMs
+@Observable
+final class ADBBridge {
+    static let shared = ADBBridge()
+    
+    // MARK: - Properties
+    
+    private let logger = Logger(subsystem: "com.aurora.apksplicer", category: "ADBBridge")
+    private let defaultPort = 5555
+    private let connectTimeout: TimeInterval = 10.0
+    
+    private(set) var isConnected = false
+    private(set) var connectedDevice: String?
+    private(set) var adbPath: String = "/usr/local/bin/adb"
+    
+    // MARK: - Initialization
+    
+    private init() {
+        detectADBPath()
+    }
+    
+    // MARK: - Public Interface
+    
+    /// Check if ADB is available and get version info
+    func checkADBAvailability() async -> AuroraResult<String> {
+        logger.info("Checking ADB availability at: \(self.adbPath)")
+        
+        do {
+            let output = try await executeADBCommand(["version"])
+            logger.info("ADB version check successful")
+            return .success(output)
+        } catch {
+            logger.error("ADB not available: \(error.localizedDescription)")
+            return .failure(.adbNotFound)
+        }
+    }
+    
+    /// Connect to an Android device/VM on specified port
+    func connect(to host: String = "localhost", port: Int = 5555) async -> AuroraResult<Void> {
+        let target = "\(host):\(port)"
+        logger.info("Connecting to Android device: \(target)")
+        
+        do {
+            // First disconnect any existing connections
+            _ = try? await executeADBCommand(["disconnect"])
+            
+            // Connect to the target
+            let output = try await executeADBCommand(["connect", target])
+            
+            if output.contains("connected") || output.contains("already connected") {
+                self.isConnected = true
+                self.connectedDevice = target
+                logger.info("Successfully connected to \(target)")
+                return .success(())
+            } else {
+                logger.error("ADB connection failed: \(output)")
+                return .failure(.adbConnectionFailed)
+            }
+        } catch {
+            logger.error("ADB connection error: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Disconnect from current device
+    func disconnect() async {
+        guard isConnected else { return }
+        
+        logger.info("Disconnecting from ADB device")
+        
+        do {
+            _ = try await executeADBCommand(["disconnect"])
+        } catch {
+            logger.error("Error during ADB disconnect: \(error.localizedDescription)")
+        }
+        
+        isConnected = false
+        connectedDevice = nil
+    }
+    
+    /// List connected devices
+    func listDevices() async -> AuroraResult<[ADBDevice]> {
+        logger.info("Listing ADB devices")
+        
+        do {
+            let output = try await executeADBCommand(["devices"])
+            let devices = parseDeviceList(output)
+            return .success(devices)
+        } catch {
+            logger.error("Failed to list ADB devices: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Install an APK file
+    func installAPK(at path: URL, options: APKInstallOptions = .default) async -> AuroraResult<Void> {
+        logger.info("Installing APK: \(path.lastPathComponent)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        var args = ["install"]
+        
+        // Add install options
+        if options.replaceExisting {
+            args.append("-r")
+        }
+        if options.allowDowngrade {
+            args.append("-d")
+        }
+        if options.grantPermissions {
+            args.append("-g")
+        }
+        
+        args.append(path.path)
+        
+        do {
+            let output = try await executeADBCommand(args)
+            
+            if output.contains("Success") {
+                logger.info("APK installation successful")
+                return .success(())
+            } else {
+                logger.error("APK installation failed: \(output)")
+                return .failure(.apkInstallationFailed(reason: output))
+            }
+        } catch {
+            logger.error("APK installation error: \(error.localizedDescription)")
+            return .failure(.apkInstallationFailed(reason: error.localizedDescription))
+        }
+    }
+    
+    /// Install multiple APKs (for split APKs/XAPK)
+    func installMultipleAPKs(at paths: [URL], options: APKInstallOptions = .default) async -> AuroraResult<Void> {
+        logger.info("Installing multiple APKs: \(paths.count) files")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        var args = ["install-multiple"]
+        
+        if options.replaceExisting {
+            args.append("-r")
+        }
+        if options.allowDowngrade {
+            args.append("-d")
+        }
+        if options.grantPermissions {
+            args.append("-g")
+        }
+        
+        args.append(contentsOf: paths.map { $0.path })
+        
+        do {
+            let output = try await executeADBCommand(args)
+            
+            if output.contains("Success") {
+                logger.info("Multiple APK installation successful")
+                return .success(())
+            } else {
+                logger.error("Multiple APK installation failed: \(output)")
+                return .failure(.apkInstallationFailed(reason: output))
+            }
+        } catch {
+            logger.error("Multiple APK installation error: \(error.localizedDescription)")
+            return .failure(.apkInstallationFailed(reason: error.localizedDescription))
+        }
+    }
+    
+    /// Push file to Android device
+    func pushFile(from localPath: URL, to remotePath: String) async -> AuroraResult<Void> {
+        logger.info("Pushing file: \(localPath.lastPathComponent) -> \(remotePath)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        do {
+            let output = try await executeADBCommand(["push", localPath.path, remotePath])
+            
+            if output.contains("pushed") || output.contains("file(s) pushed") {
+                logger.info("File push successful")
+                return .success(())
+            } else {
+                logger.error("File push failed: \(output)")
+                return .failure(.adbConnectionFailed)
+            }
+        } catch {
+            logger.error("File push error: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Execute shell command on Android device
+    func executeShellCommand(_ command: String) async -> AuroraResult<String> {
+        logger.info("Executing shell command: \(command)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        do {
+            let output = try await executeADBCommand(["shell", command])
+            return .success(output)
+        } catch {
+            logger.error("Shell command failed: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Get logcat output
+    func getLogcat(filter: String? = nil, lines: Int = 100) async -> AuroraResult<String> {
+        logger.info("Getting logcat output")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        var args = ["logcat", "-d", "-t", "\(lines)"]
+        
+        if let filter = filter {
+            args.append(filter)
+        }
+        
+        do {
+            let output = try await executeADBCommand(args)
+            return .success(output)
+        } catch {
+            logger.error("Logcat failed: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Check if Android system is ready
+    func waitForDevice(timeout: TimeInterval = 30.0) async -> AuroraResult<Void> {
+        logger.info("Waiting for Android device to be ready")
+        
+        let startTime = Date()
+        
+        while Date().timeIntervalSince(startTime) < timeout {
+            do {
+                let output = try await executeADBCommand(["shell", "getprop", "sys.boot_completed"])
+                
+                if output.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+                    logger.info("Android device is ready")
+                    return .success(())
+                }
+                
+                // Wait a bit before checking again
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            } catch {
+                // Continue waiting if command fails
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            }
+        }
+        
+        logger.error("Timeout waiting for Android device")
+        return .failure(.adbConnectionFailed)
+    }
+    
+    // MARK: - Private Methods
+    
+    private func detectADBPath() {
+        let possiblePaths = [
+            "/usr/local/bin/adb",
+            "/opt/homebrew/bin/adb",
+            "/usr/bin/adb",
+            "adb" // Let shell find it
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) || path == "adb" {
+                self.adbPath = path
+                logger.info("ADB path detected: \(path)")
+                return
+            }
+        }
+        
+        logger.warning("ADB not found in standard locations")
+    }
+    
+    private func executeADBCommand(_ arguments: [String]) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = arguments
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+            
+            process.terminationHandler = { _ in
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                
+                let output = String(data: outputData, encoding: .utf8) ?? ""
+                let error = String(data: errorData, encoding: .utf8) ?? ""
+                
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: output)
+                } else {
+                    let _ = error.isEmpty ? "ADB command failed with exit code \(process.terminationStatus)" : error
+                    continuation.resume(throwing: AuroraError.adbConnectionFailed)
+                }
+            }
+            
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: AuroraError.adbNotFound)
+            }
+        }
+    }
+    
+    private func parseDeviceList(_ output: String) -> [ADBDevice] {
+        let lines = output.components(separatedBy: .newlines)
+        var devices: [ADBDevice] = []
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Skip empty lines and header
+            if trimmed.isEmpty || trimmed.contains("List of devices") {
+                continue
+            }
+            
+            let components = trimmed.components(separatedBy: .whitespaces)
+            if components.count >= 2 {
+                let identifier = components[0]
+                let status = components[1]
+                
+                devices.append(ADBDevice(
+                    identifier: identifier,
+                    status: ADBDeviceStatus(rawValue: status) ?? .unknown
+                ))
+            }
+        }
+        
+        return devices
+    }
+}
+
+// MARK: - Supporting Types
+
+/// ADB device information
+struct ADBDevice: Identifiable, Hashable {
+    let id = UUID()
+    let identifier: String
+    let status: ADBDeviceStatus
+}
+
+/// ADB device status
+enum ADBDeviceStatus: String, CaseIterable {
+    case device = "device"
+    case offline = "offline"
+    case unauthorized = "unauthorized"
+    case unknown = "unknown"
+    
+    var description: String {
+        switch self {
+        case .device:
+            return "Connected"
+        case .offline:
+            return "Offline"
+        case .unauthorized:
+            return "Unauthorized"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+}
+
+/// APK installation options
+struct APKInstallOptions {
+    let replaceExisting: Bool
+    let allowDowngrade: Bool
+    let grantPermissions: Bool
+    
+    static let `default` = APKInstallOptions(
+        replaceExisting: true,
+        allowDowngrade: false,
+        grantPermissions: true
+    )
+    
+    static let conservative = APKInstallOptions(
+        replaceExisting: false,
+        allowDowngrade: false,
+        grantPermissions: false
+    )
+}

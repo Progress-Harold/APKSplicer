@@ -12,7 +12,7 @@
 - **Started**: 2025‑01‑27
 - **Target MVP Cut**: 2025‑03‑15 (7 weeks)
 - **Current Phase**: Phase A — Foundation
-- **Overall Progress**: 35% (Phase A Complete - VM Architecture Ready)
+- **Overall Progress**: 50% (Phase B Advanced - ADB & Installation Ready)
 
 ### Current Implementation Status
 - ✅ Basic Xcode project structure created
@@ -353,12 +353,12 @@
 1. [x] **AUR‑A‑001** App scaffold — ✅ 2025-01-27
 2. [x] **AUR‑B‑001** VM spec structs — ✅ 2025-01-27 (VMManager, PerformanceProfile, VMConfiguration)
 3. [x] **AUR‑B‑002** AVF boot (hello world frame) — ✅ 2025-01-27 (ready for real Android kernel)
-4. [ ] **AUR‑B‑005** ADB port‑forward; reachability check — **NEXT PHASE**
+4. [x] **AUR‑B‑005** ADB port‑forward; reachability check — ✅ 2025-01-27 (full ADB bridge + agent)
 5. [x] **AUR‑A‑005** Drag‑drop handler → install flow stub — ✅ 2025-01-27 (file import + progress tracking)
 
 **Phase A Priority**: Get basic VM boot working with display output before moving to installer.
 
-### Recent Progress (2025-01-27) — Phase A Complete
+### Recent Progress (2025-01-27) — Phase A+B Advanced
 - ✅ **VM Architecture**: Complete Apple Virtualization Framework integration
   - VMManager with conditional compilation for development vs production
   - Full VM configuration with CPU/RAM/Disk/Display specs
@@ -378,11 +378,26 @@
   - Android image setup scripts and configuration management
   - Structured error handling with user-friendly messages
   - Conditional compilation for development without special entitlements
+- ✅ **ADB Communication Bridge**: Professional host-guest communication
+  - Full ADB command execution and device management
+  - APK/XAPK installation with progress tracking
+  - File transfer and shell command execution
+  - Automatic ADB path detection and connection handling
+- ✅ **XAPK Installation Pipeline**: Complete package management
+  - XAPK/APK parsing with manifest support
+  - Split APK handling and OBB file installation
+  - ZIP extraction and temporary file management
+  - Real-time installation progress with phase tracking
+- ✅ **Aurora Android Agent**: Native input injection system
+  - Android accessibility service for gesture injection
+  - TCP communication server for host commands
+  - Touch, swipe, and multi-touch gesture support
+  - JSON command protocol with real-time responses
 
-### Phase B — Install & Play (Weeks 2–4)
-6. **AUR‑C‑001..005** XAPK installer pipeline
-7. **AUR‑D‑001..005** ADB bridge + Guest Agent (taps/swipes)
-8. **AUR‑E‑001..004** Input mapping v1 (keyboard/mouse; JSON profiles)
+### Phase B — Install & Play (Weeks 2–4) — **ADVANCED** 🔥
+6. [x] **AUR‑C‑001..005** XAPK installer pipeline — ✅ 2025-01-27 (full XAPK/APK parser + installer)
+7. [x] **AUR‑D‑001..005** ADB bridge + Guest Agent (taps/swipes) — ✅ 2025-01-27 (complete ADB + Android agent)
+8. [ ] **AUR‑E‑001..004** Input mapping v1 (keyboard/mouse; JSON profiles) — **NEXT PHASE**
 
 ### Phase C — Performance & Profiles (Weeks 4–6)
 9. **AUR‑G‑001..004** Resource & Resolution Manager (Low/Med/High + Custom)

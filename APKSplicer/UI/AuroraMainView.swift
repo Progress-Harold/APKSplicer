@@ -200,6 +200,9 @@ struct TitlesList: View {
         List(titles, selection: $selectedTitle) { title in
             TitleRow(title: title)
                 .tag(title)
+                .contextMenu {
+                    AppContextMenu(title: title)
+                }
         }
         .listStyle(.sidebar)
     }
@@ -359,8 +362,115 @@ struct TitleHeader: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    
+                    // Uninstall button
+                    Button("Uninstall") {
+                        Task {
+                            await uninstallTitle(title)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .foregroundStyle(.red)
                 }
             }
+        }
+    }
+    
+    private func uninstallTitle(_ title: InstalledTitle) async {
+        // Show confirmation dialog would go here in a real implementation
+        // For now, we'll proceed with uninstallation
+        
+        // Check if VM is running and ADB is connected
+        guard adbBridge.isConnected else {
+            print("ADB not connected - cannot uninstall")
+            return
+        }
+        
+        switch await adbBridge.uninstallAPK(packageId: title.packageId) {
+        case .success:
+            // Remove from SwiftData
+            modelContext.delete(title)
+            print("Successfully uninstalled: \(title.packageId)")
+        case .failure(let error):
+            print("Uninstallation failed: \(error.localizedDescription)")
+        }
+    }
+    
+    private func clearAppData(for title: InstalledTitle) async {
+        guard adbBridge.isConnected else {
+            print("ADB not connected - cannot clear data")
+            return
+        }
+        
+        switch await adbBridge.clearPackageData(packageId: title.packageId) {
+        case .success:
+            print("Successfully cleared data for: \(title.packageId)")
+        case .failure(let error):
+            print("Failed to clear data: \(error.localizedDescription)")
+        }
+    }
+}
+
+struct AppContextMenu: View {
+    let title: InstalledTitle
+    @Environment(\.modelContext) private var modelContext
+    @State private var vmManager = VMManager.shared
+    @State private var adbBridge = ADBBridge.shared
+    
+    var body: some View {
+        Button("Launch App") {
+            Task {
+                switch await vmManager.startVM(for: title, profile: .medium) {
+                case .success:
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    _ = await adbBridge.connect()
+                case .failure:
+                    break
+                }
+            }
+        }
+        
+        Button("Clear App Data") {
+            Task {
+                await clearAppData(for: title)
+            }
+        }
+        
+        Divider()
+        
+        Button("Uninstall App", role: .destructive) {
+            Task {
+                await uninstallTitle(title)
+            }
+        }
+    }
+    
+    private func uninstallTitle(_ title: InstalledTitle) async {
+        guard adbBridge.isConnected else {
+            print("ADB not connected - cannot uninstall")
+            return
+        }
+        
+        switch await adbBridge.uninstallAPK(packageId: title.packageId) {
+        case .success:
+            modelContext.delete(title)
+            print("Successfully uninstalled: \(title.packageId)")
+        case .failure(let error):
+            print("Uninstallation failed: \(error.localizedDescription)")
+        }
+    }
+    
+    private func clearAppData(for title: InstalledTitle) async {
+        guard adbBridge.isConnected else {
+            print("ADB not connected - cannot clear data")
+            return
+        }
+        
+        switch await adbBridge.clearPackageData(packageId: title.packageId) {
+        case .success:
+            print("Successfully cleared data for: \(title.packageId)")
+        case .failure(let error):
+            print("Failed to clear data: \(error.localizedDescription)")
         }
     }
 }

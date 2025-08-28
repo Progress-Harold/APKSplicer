@@ -18,6 +18,7 @@ enum AuroraError: Error, LocalizedError {
     // Installation errors
     case xapkParsingFailed(reason: String)
     case apkInstallationFailed(reason: String)
+    case apkUninstallationFailed(reason: String)
     case adbNotFound
     case adbConnectionFailed
     
@@ -43,6 +44,8 @@ enum AuroraError: Error, LocalizedError {
             return "Failed to parse XAPK file: \(reason)"
         case .apkInstallationFailed(let reason):
             return "APK installation failed: \(reason)"
+        case .apkUninstallationFailed(let reason):
+            return "APK uninstallation failed: \(reason)"
         case .adbNotFound:
             return "Android Debug Bridge (adb) not found. Please install Android Platform Tools."
         case .adbConnectionFailed:

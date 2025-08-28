@@ -352,6 +352,30 @@ final class XAPKInstaller {
     private func cleanupTemporaryDirectory(_ tempDir: URL) {
         try? fileManager.removeItem(at: tempDir)
     }
+    
+    // MARK: - Uninstallation & Management
+    
+    /// Uninstall an installed package
+    func uninstallPackage(packageId: String, keepData: Bool = false) async -> AuroraResult<Void> {
+        logger.info("Uninstalling package: \(packageId)")
+        
+        // Use ADB bridge to uninstall the package
+        return await adbBridge.uninstallAPK(packageId: packageId, keepData: keepData)
+    }
+    
+    /// Clear package data without uninstalling
+    func clearPackageData(packageId: String) async -> AuroraResult<Void> {
+        logger.info("Clearing data for package: \(packageId)")
+        
+        return await adbBridge.clearPackageData(packageId: packageId)
+    }
+    
+    /// Get list of installed packages
+    func getInstalledPackages(includeSystem: Bool = false) async -> AuroraResult<[InstalledPackage]> {
+        logger.info("Getting installed packages list")
+        
+        return await adbBridge.listInstalledPackages(includeSystem: includeSystem)
+    }
 }
 
 // MARK: - Supporting Types

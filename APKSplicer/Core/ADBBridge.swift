@@ -221,6 +221,110 @@ final class ADBBridge {
         }
     }
     
+    /// Uninstall an APK package
+    func uninstallAPK(packageId: String, keepData: Bool = false) async -> AuroraResult<Void> {
+        logger.info("Uninstalling APK: \(packageId)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        var args = ["uninstall"]
+        
+        // Add options
+        if keepData {
+            args.append("-k") // Keep data and cache directories
+        }
+        
+        args.append(packageId)
+        
+        do {
+            let output = try await executeADBCommand(args)
+            
+            if output.contains("Success") {
+                logger.info("APK uninstallation successful: \(packageId)")
+                return .success(())
+            } else {
+                logger.error("APK uninstallation failed: \(output)")
+                return .failure(.apkUninstallationFailed(reason: output))
+            }
+        } catch {
+            logger.error("APK uninstallation error: \(error.localizedDescription)")
+            return .failure(.apkUninstallationFailed(reason: error.localizedDescription))
+        }
+    }
+    
+    /// List installed packages
+    func listInstalledPackages(includeSystem: Bool = false) async -> AuroraResult<[InstalledPackage]> {
+        logger.info("Listing installed packages")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        var args = ["shell", "pm", "list", "packages"]
+        
+        if !includeSystem {
+            args.append("-3") // Only show third-party packages
+        }
+        
+        do {
+            let output = try await executeADBCommand(args)
+            let packages = parseInstalledPackages(output)
+            return .success(packages)
+        } catch {
+            logger.error("Failed to list installed packages: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Get package information
+    func getPackageInfo(packageId: String) async -> AuroraResult<PackageInfo> {
+        logger.info("Getting package info for: \(packageId)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        do {
+            // Get package info
+            let infoOutput = try await executeADBCommand(["shell", "dumpsys", "package", packageId])
+            
+            // Get package path
+            let pathOutput = try await executeADBCommand(["shell", "pm", "path", packageId])
+            
+            let packageInfo = parsePackageInfo(packageId: packageId, dumpsysOutput: infoOutput, pathOutput: pathOutput)
+            return .success(packageInfo)
+        } catch {
+            logger.error("Failed to get package info: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
+    /// Clear package data
+    func clearPackageData(packageId: String) async -> AuroraResult<Void> {
+        logger.info("Clearing data for package: \(packageId)")
+        
+        guard isConnected else {
+            return .failure(.adbConnectionFailed)
+        }
+        
+        do {
+            let output = try await executeADBCommand(["shell", "pm", "clear", packageId])
+            
+            if output.contains("Success") {
+                logger.info("Package data cleared successfully: \(packageId)")
+                return .success(())
+            } else {
+                logger.error("Failed to clear package data: \(output)")
+                return .failure(.adbConnectionFailed)
+            }
+        } catch {
+            logger.error("Clear package data error: \(error.localizedDescription)")
+            return .failure(.adbConnectionFailed)
+        }
+    }
+    
     /// Get logcat output
     func getLogcat(filter: String? = nil, lines: Int = 100) async -> AuroraResult<String> {
         logger.info("Getting logcat output")
@@ -352,6 +456,73 @@ final class ADBBridge {
         
         return devices
     }
+    
+    private func parseInstalledPackages(_ output: String) -> [InstalledPackage] {
+        let lines = output.components(separatedBy: .newlines)
+        var packages: [InstalledPackage] = []
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Lines are in format "package:com.example.app"
+            if trimmed.hasPrefix("package:") {
+                let packageId = String(trimmed.dropFirst(8)) // Remove "package:" prefix
+                
+                packages.append(InstalledPackage(
+                    packageId: packageId,
+                    isSystemApp: false // We filtered for third-party only
+                ))
+            }
+        }
+        
+        return packages
+    }
+    
+    private func parsePackageInfo(packageId: String, dumpsysOutput: String, pathOutput: String) -> PackageInfo {
+        var versionName = "Unknown"
+        var versionCode = 0
+        var installLocation = "Unknown"
+        
+        // Parse dumpsys output for version info
+        let lines = dumpsysOutput.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if trimmed.contains("versionName=") {
+                if let range = trimmed.range(of: "versionName=") {
+                    let remaining = String(trimmed[range.upperBound...])
+                    versionName = remaining.components(separatedBy: .whitespaces).first ?? "Unknown"
+                }
+            }
+            
+            if trimmed.contains("versionCode=") {
+                if let range = trimmed.range(of: "versionCode=") {
+                    let remaining = String(trimmed[range.upperBound...])
+                    if let code = Int(remaining.components(separatedBy: .whitespaces).first ?? "0") {
+                        versionCode = code
+                    }
+                }
+            }
+        }
+        
+        // Parse path output
+        let pathLines = pathOutput.components(separatedBy: .newlines)
+        for line in pathLines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("package:") {
+                installLocation = String(trimmed.dropFirst(8))
+                break
+            }
+        }
+        
+        return PackageInfo(
+            packageId: packageId,
+            versionName: versionName,
+            versionCode: versionCode,
+            installLocation: installLocation,
+            isSystemApp: installLocation.contains("/system/")
+        )
+    }
 }
 
 // MARK: - Supporting Types
@@ -401,4 +572,20 @@ struct APKInstallOptions {
         allowDowngrade: false,
         grantPermissions: false
     )
+}
+
+/// Installed package information
+struct InstalledPackage: Identifiable, Hashable {
+    let id = UUID()
+    let packageId: String
+    let isSystemApp: Bool
+}
+
+/// Detailed package information
+struct PackageInfo {
+    let packageId: String
+    let versionName: String
+    let versionCode: Int
+    let installLocation: String
+    let isSystemApp: Bool
 }

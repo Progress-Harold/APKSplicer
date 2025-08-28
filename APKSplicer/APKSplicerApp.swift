@@ -1,6 +1,6 @@
 //
 //  APKSplicerApp.swift
-//  APKSplicer
+//  APKSplicer - Aurora Android XAPK Player
 //
 //  Created by Harold Davis on 8/27/25.
 //
@@ -12,7 +12,7 @@ import SwiftData
 struct APKSplicerApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            InstalledTitle.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -22,11 +22,16 @@ struct APKSplicerApp: App {
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()
+    
+    @State private var jobManager = JobManager()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AuroraMainView()
+                .environment(jobManager)
         }
         .modelContainer(sharedModelContainer)
+        .windowResizability(.contentSize)
+        .windowStyle(.titleBar)
     }
 }

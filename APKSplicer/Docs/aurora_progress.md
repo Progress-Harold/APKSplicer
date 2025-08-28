@@ -12,7 +12,7 @@
 - **Started**: 2025‑01‑27
 - **Target MVP Cut**: 2025‑03‑15 (7 weeks)
 - **Current Phase**: Phase A — Foundation
-- **Overall Progress**: 5% (Basic Xcode project scaffolded)
+- **Overall Progress**: 25% (Foundation architecture complete)
 
 ### Current Implementation Status
 - ✅ Basic Xcode project structure created
@@ -351,12 +351,21 @@
 
 ### Phase A — Foundation (Weeks 1–2) — **IN PROGRESS**
 1. [x] **AUR‑A‑001** App scaffold — ✅ 2025-01-27
-2. [ ] **AUR‑B‑001** VM spec structs — **NEXT**
-3. [ ] **AUR‑B‑002** AVF boot (hello world frame) 
+2. [x] **AUR‑B‑001** VM spec structs — ✅ 2025-01-27 (VMManager, PerformanceProfile, VMConfiguration)
+3. [ ] **AUR‑B‑002** AVF boot (hello world frame) — **NEXT** (needs Android kernel)
 4. [ ] **AUR‑B‑005** ADB port‑forward; reachability check
-5. [ ] **AUR‑A‑005** Drag‑drop handler → install flow stub
+5. [x] **AUR‑A‑005** Drag‑drop handler → install flow stub — ✅ 2025-01-27 (basic file import)
 
 **Phase A Priority**: Get basic VM boot working with display output before moving to installer.
+
+### Recent Progress (2025-01-27)
+- ✅ Added Virtualization.framework entitlements (vm.networking, vm.device-access)
+- ✅ Implemented comprehensive error handling with AuroraError enum
+- ✅ Created domain models: InstalledTitle, PerformanceProfile, VMConfiguration
+- ✅ Built VMManager with AVF integration (ready for Android kernel)
+- ✅ Replaced default SwiftUI/SwiftData app with Aurora-specific UI
+- ✅ Added job management system for install progress tracking
+- ✅ Created modern macOS app interface with sidebar and detail views
 
 ### Phase B — Install & Play (Weeks 2–4)
 6. **AUR‑C‑001..005** XAPK installer pipeline
